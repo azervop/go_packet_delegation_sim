@@ -29,10 +29,51 @@ type queue struct {
 	averageState float64
 }
 
-func queueArrive(q *queue, msgID *int, t float64) {
+func mgrQueueArrive(q *queue, msgID *int, t float64) {
 	// handle arrival
 	newMsg := message{id: *msgID, arrivalTime: t}
 	(*msgID)++
+	q.messages = append(q.messages, newMsg)
+	q.averageState += float64(len(q.messages)-1) * (t - q.lastChange)
+	if !q.busy {
+		// become busy
+		q.busy = true
+		newMsg.dequeueTime = t
+		q.nextDeparture = t + rand.ExpFloat64()/q.processingRate
+	}
+	q.lastChange = t
+	q.nextArrival = t + rand.ExpFloat64()/q.arrivalRate
+}
+
+func mgrQueueProcess(q *queue, t float64, nextQueue *queue) {
+	// handle departure
+	// track statistics
+	q.messages[0].departureTime = t
+	q.numProcessed++
+	q.totalDelay += q.messages[0].departureTime - q.messages[0].arrivalTime
+	q.averageState += float64(len(q.messages)) * (t - q.lastChange)
+	q.lastChange = t
+	// if q.numProcessed >= q.maxProcessed {
+	// 	return
+	// }
+	processed := q.messages[0]
+	queueArrive(nextQueue, &processed.id, t)
+	q.messages = q.messages[1:]
+	if len(q.messages) > 0 {
+		// pop customer
+		q.nextDeparture = t + rand.ExpFloat64()/q.processingRate
+	} else {
+		// go idle
+		q.busy = false
+		q.nextDeparture = math.Inf(1)
+	}
+}
+
+func queueArrive(q *queue, msgID *int, t float64) {
+	// fmt.Println("Time:", t, "=> New message arrived at VNF")
+	// handle arrival
+	newMsg := message{id: *msgID, arrivalTime: t}
+	// (*msgID)++
 	q.messages = append(q.messages, newMsg)
 	q.averageState += float64(len(q.messages)-1) * (t - q.lastChange)
 	if !q.busy {
@@ -84,12 +125,25 @@ func main() {
 		panic(e)
 	}
 
-	q := queue{
+	mgrQueue := queue{
+		messages:    []message{},
+		busy:        false,
+		arrivalRate: arrRate,
+		processingRate: depRate,
+		nextArrival:  rand.ExpFloat64() / arrRate,
+		nextDeparture: math.Inf(1),
+		lastChange:   0,
+		numProcessed: 0,
+		maxProcessed: N,
+		totalDelay:   0,
+		averageState: 0,
+	}
+	vnfQueue := queue{
 		messages:     []message{},
 		busy:         false,
 		arrivalRate:  arrRate,
 		processingRate: depRate,
-		nextArrival:  rand.ExpFloat64() / arrRate,
+		nextArrival:  math.Inf(1),
 		nextDeparture: math.Inf(1),
 		lastChange:   0,
 		numProcessed: 0,
@@ -100,24 +154,38 @@ func main() {
 	msgID := 0
 
 	t := 0.0
-	counter := 0
 	for {
-		t = min(q.nextArrival, q.nextDeparture)
-		if q.numProcessed >= q.maxProcessed {
-			break
+		queueType := "manager"
+		t = min(mgrQueue.nextArrival, mgrQueue.nextDeparture)
+		if vnfQueue.nextDeparture < t {
+			queueType = "vnf"
+			t = vnfQueue.nextDeparture
 		}
-		if t == q.nextArrival {
-			counter++
-			// fmt.Println("Time:", t, "=> New message arrived (counter:", counter, ")")
-			queueArrive(&q, &msgID, t)
-		} else {
-			counter--
-			// fmt.Println("Time:", t, "=> Processing message (counter:", counter, ")")
-			queueProcess(&q, t)
+
+		if queueType == "manager" {
+			if t == mgrQueue.nextArrival {
+				// fmt.Println("Time:", t, "=> New message arrived at manager")
+				mgrQueueArrive(&mgrQueue, &msgID, t)
+			} else {
+				// fmt.Println("Time:", t, "=> Processing message at manager")
+				mgrQueueProcess(&mgrQueue, t, &vnfQueue)
+			}
+		} else if queueType == "vnf" {
+			if vnfQueue.numProcessed >= vnfQueue.maxProcessed {
+				break
+			}
+
+			if t == vnfQueue.nextArrival {
+				// queueArrive(&vnfQueue, &msgID, t)
+			} else {
+				// fmt.Println("Time:", t, "=> Processing message at VNF")
+				queueProcess(&vnfQueue, t)
+			}
 		}
 	}
 
+
 	fmt.Println("Total time taken:", t, "=> N/t", float64(N)/t)
-	fmt.Println("Avg delay:", q.totalDelay/float64(N), "(theory:", 1/(q.processingRate - q.arrivalRate), ")")
-	fmt.Println("Avg state:", q.averageState/t, " (theory:", q.arrivalRate/(q.processingRate - q.arrivalRate), ")")
+	fmt.Println("Avg delay:", vnfQueue.totalDelay/float64(N), "(theory:", 1/(vnfQueue.processingRate - vnfQueue.arrivalRate), ")")
+	fmt.Println("Avg state:", vnfQueue.averageState/t, " (theory:", vnfQueue.arrivalRate/(vnfQueue.processingRate - vnfQueue.arrivalRate), ")")
 }
