@@ -8,6 +8,67 @@ import (
 	"math/rand"
 )
 
+type message struct {
+	id int
+	arrivalTime float64
+	dequeueTime float64
+	departureTime float64
+}
+
+type queue struct {
+	messages []message
+	busy bool
+	arrivalRate float64
+	processingRate float64
+	nextArrival float64
+	nextDeparture float64
+	lastChange float64
+	numProcessed int
+	maxProcessed int
+	totalDelay float64
+	averageState float64
+}
+
+func queueArrive(q *queue, msgID *int, t float64) {
+	// handle arrival
+	newMsg := message{id: *msgID, arrivalTime: t}
+	(*msgID)++
+	q.messages = append(q.messages, newMsg)
+	q.averageState += float64(len(q.messages)-1) * (t - q.lastChange)
+	if !q.busy {
+		// become busy
+		q.busy = true
+		newMsg.dequeueTime = t
+		q.nextDeparture = t + rand.ExpFloat64()/q.processingRate
+	}
+	q.lastChange = t
+	q.nextArrival = t + rand.ExpFloat64()/q.arrivalRate
+}
+
+func queueProcess(q *queue, t float64) {
+	// handle departure
+	// track statistics
+	q.messages[0].departureTime = t
+	q.numProcessed++
+	q.totalDelay += q.messages[0].departureTime - q.messages[0].arrivalTime
+	q.averageState += float64(len(q.messages)) * (t - q.lastChange)
+	q.lastChange = t
+	if q.numProcessed >= q.maxProcessed {
+		return
+	}
+	processed := q.messages[0]
+	q.messages = q.messages[1:]
+	if len(q.messages) > 0 {
+		// pop customer
+		processed.dequeueTime = t
+		q.nextDeparture = t + rand.ExpFloat64()/q.processingRate
+	} else {
+		// go idle
+		q.busy = false
+		q.nextDeparture = math.Inf(1)
+	}
+}
+
 func main() {
 	args := os.Args[1:]
 	arrRate, e := strconv.ParseFloat(args[0], 64)
@@ -23,54 +84,40 @@ func main() {
 		panic(e)
 	}
 
-	queue := []float64{}
-	busy := false
-	served := 0
-	arrTime := rand.ExpFloat64()
-	depTime := math.Inf(1)
-
-	custTime := 0.0
-	avgQueueDelay := 0.0
-	avgDelay := 0.0
+	q := queue{
+		messages:     []message{},
+		busy:         false,
+		arrivalRate:  arrRate,
+		processingRate: depRate,
+		nextArrival:  rand.ExpFloat64() / arrRate,
+		nextDeparture: math.Inf(1),
+		lastChange:   0,
+		numProcessed: 0,
+		maxProcessed: N,
+		totalDelay:   0,
+		averageState: 0,
+	}
+	msgID := 0
 
 	t := 0.0
+	counter := 0
 	for {
-		t = min(arrTime, depTime)
-		if arrTime < depTime {
-			// handle arrival
-			if busy {
-				// enqueue customer
-				queue = append(queue, arrTime)
-			} else {
-				// become busy
-				custTime = t
-				busy = true
-				depTime = t + rand.ExpFloat64()/depRate
-			}
-			arrTime = t + rand.ExpFloat64()/arrRate
+		t = min(q.nextArrival, q.nextDeparture)
+		if q.numProcessed >= q.maxProcessed {
+			break
+		}
+		if t == q.nextArrival {
+			counter++
+			// fmt.Println("Time:", t, "=> New message arrived (counter:", counter, ")")
+			queueArrive(&q, &msgID, t)
 		} else {
-			// handle departure
-
-			// track statistics
-			served++
-			avgDelay += t - custTime
-			if served >= N {
-				break
-			}
-			if len(queue) > 0 {
-				// pop customer
-				custTime, queue = queue[0], queue[1:]
-				avgQueueDelay += t - custTime
-				depTime = t + rand.ExpFloat64()/depRate
-			} else {
-				// go idle
-				busy = false
-				depTime = math.Inf(1)
-			}
+			counter--
+			// fmt.Println("Time:", t, "=> Processing message (counter:", counter, ")")
+			queueProcess(&q, t)
 		}
 	}
 
 	fmt.Println("Total time taken:", t, "=> N/t", float64(N)/t)
-	fmt.Println("Avg queue delay:", avgQueueDelay/float64(N))
-	fmt.Println("Avg delay:", avgDelay/float64(N))
+	fmt.Println("Avg delay:", q.totalDelay/float64(N), "(theory:", 1/(q.processingRate - q.arrivalRate), ")")
+	fmt.Println("Avg state:", q.averageState/t, " (theory:", q.arrivalRate/(q.processingRate - q.arrivalRate), ")")
 }
