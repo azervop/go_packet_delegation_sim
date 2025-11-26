@@ -186,11 +186,11 @@ func mgrQueueArrive(q *pqueue, msgID *int, t float64, nextQueue *queue, simID in
 	newMsg := message{id: *msgID, arrivalTime: t, priority: 0}
 	logEvent(simID, t, "manager", "arrival", *msgID)
 	(*msgID)++
-	if len(nextQueue.messages) >= q.theta {
-		if rand.Float64() >= q.keepProbability {
-			newMsg.priority = 1 // high priority
-		}
-	}
+	// if len(nextQueue.messages) >= q.theta {
+	// 	if rand.Float64() >= q.keepProbability {
+	// 		newMsg.priority = 1 // high priority
+	// 	}
+	// }
 	q.averageState += float64(len(q.messages)) * (t - q.lastChange)
 	if !q.busy {
 		// become busy
@@ -215,14 +215,23 @@ func mgrQueueProcess(q *pqueue, t float64, nextQueue *queue, simID int) {
 	q.lastChange = t
 
 	processed := q.processingMessage
-	if processed.priority == 1 {
-		// Delegated packet - not forwarded to VNF
-		logEvent(simID, t, "manager", "delegation", processed.id)
+	if len(nextQueue.messages) >= q.theta {
+		if rand.Float64() >= q.keepProbability {
+			logEvent(simID, t, "manager", "delegation", processed.id)
+		} else {
+			logEvent(simID, t, "manager", "departure", processed.id)
+			queueArrive(nextQueue, &processed.id, t, simID)
+		}
 	} else {
-		// Forwarded packet - send to VNF
 		logEvent(simID, t, "manager", "departure", processed.id)
 		queueArrive(nextQueue, &processed.id, t, simID)
 	}
+
+	// if processed.priority == 1 {
+	// 	// Delegated packet - not forwarded to VNF
+	// } else {
+	// 	// Forwarded packet - send to VNF
+	// }
 
 	if len(q.messages) == 0 {
 		q.busy = false
