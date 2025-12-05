@@ -13,12 +13,12 @@ var CSV_FOLDER string = "csv/"
 var eventLogFile *os.File
 
 type simulationParameters struct {
-	id 		   int     // Simulation ID
-	arrivalRate    float64 // λ
+	id              int     // Simulation ID
+	arrivalRate     float64 // λ
 	departureRate   float64 // μ
-	N              int     // Number of messages to process
+	N               int     // Number of messages to process
 	keepProbability float64 // Probability of keeping a message in the queue
-	theta          int     // Threshold for delegation
+	theta           int     // Threshold for delegation
 }
 
 func unwrapParamJson(params map[string]interface{}) []simulationParameters {
@@ -93,7 +93,7 @@ func unwrapParamJson(params map[string]interface{}) []simulationParameters {
 
 	recur(0, make(map[string]interface{}))
 	return paramList
-}	
+}
 
 type message struct {
 	id            int
@@ -287,12 +287,17 @@ func queueProcess(q *queue, t float64, simID int) {
 }
 
 func runSimulation(params simulationParameters) {
+	if params.keepProbability*params.arrivalRate >= params.departureRate {
+		panic(fmt.Sprintf("Unstable system: keepProbability (%.2f) * arrivalRate (%.2f) >= processingRate (%.2f)",
+			params.keepProbability, params.arrivalRate, params.departureRate))
+	}
+
 	mgrQueue := pqueue{
 		messages:          messagePriorityQueue{},
 		processingMessage: nil,
 		busy:              false,
 		arrivalRate:       params.arrivalRate,
-		processingRate:    8*params.departureRate,
+		processingRate:    8 * params.departureRate,
 		nextArrival:       rand.ExpFloat64() / params.arrivalRate,
 		nextDeparture:     math.Inf(1),
 		theta:             params.theta,
@@ -342,7 +347,7 @@ func runSimulation(params simulationParameters) {
 			}
 		}
 	}
-	fmt.Printf("Simulation %d completed: Total time %.6f, Throughput %.6f\n", 
+	fmt.Printf("Simulation %d completed: Total time %.6f, Throughput %.6f\n",
 		params.id, t, float64(params.N)/t)
 }
 
@@ -366,6 +371,7 @@ func main() {
 		return
 	}
 
+	CSV_FOLDER += fmt.Sprintf("k=%.01f/", float64(paramMap["keepProbability"].(float64)))
 	paramList := unwrapParamJson(paramMap)
 	if len(paramList) == 0 {
 		fmt.Println("No valid parameters found in the file.")
@@ -391,6 +397,6 @@ func main() {
 		param.id = i
 		runSimulation(param)
 	}
-	
+
 	fmt.Println("Event log saved to", CSV_FOLDER+"events.csv")
 }

@@ -1,0 +1,7 @@
+{
+    "arrivalRate": [0.6, 0.7, 0.8, 0.9, 0.99, 1.1, 1.2, 1.24],
+    "departureRate": 1.0,
+    "N": 500000,
+    "keepProbability": 0.8,
+    "theta": [10, 20, 30, 40, 50]
+}
