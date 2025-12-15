@@ -184,7 +184,7 @@ func logEvent(id int, time float64, node string, event string, msgID int) {
 func mgrQueueArrive(q *pqueue, msgID *int, t float64, nextQueue *queue, simID int) {
 	// handle arrival
 	newMsg := message{id: *msgID, arrivalTime: t, priority: 0}
-	logEvent(simID, t, "manager", "arrival", *msgID)
+	// logEvent(simID, t, "manager", "arrival", *msgID)
 	(*msgID)++
 	// if len(nextQueue.messages) >= q.theta {
 	// 	if rand.Float64() >= q.keepProbability {
@@ -219,11 +219,11 @@ func mgrQueueProcess(q *pqueue, t float64, nextQueue *queue, simID int) {
 		if rand.Float64() >= q.keepProbability {
 			logEvent(simID, t, "manager", "delegation", processed.id)
 		} else {
-			logEvent(simID, t, "manager", "departure", processed.id)
+			// logEvent(simID, t, "manager", "departure", processed.id)
 			queueArrive(nextQueue, &processed.id, t, simID)
 		}
 	} else {
-		logEvent(simID, t, "manager", "departure", processed.id)
+		// logEvent(simID, t, "manager", "departure", processed.id)
 		queueArrive(nextQueue, &processed.id, t, simID)
 	}
 
@@ -371,7 +371,8 @@ func main() {
 		return
 	}
 
-	CSV_FOLDER += fmt.Sprintf("k=%.01f/", float64(paramMap["keepProbability"].(float64)))
+	CSV_FOLDER += fmt.Sprintf("k=%.01f", float64(paramMap["keepProbability"].(float64)))
+	CSV_FOLDER += fmt.Sprintf("_theta=%d/", int(paramMap["theta"].(float64)))
 	paramList := unwrapParamJson(paramMap)
 	if len(paramList) == 0 {
 		fmt.Println("No valid parameters found in the file.")
