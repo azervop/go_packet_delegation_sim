@@ -9,6 +9,6 @@ This repository simulates the behavior of a queue using packet delegation. Packe
 
 - Run with:
     - `go run go_delegation_queue.go params/params.json`
-- Multiple simulations can be executed for all parameter files in parallel using the included Python file:
-    - `python3 run_multiple.py params`
+- Multiple simulations can be executed in parallel for all parameter files in the `params` folder using the included Python file:
+    - `python3 run_multiple.py`
     - __WARNING__: This will generate multiple large event logging CSVs (~25GB).
