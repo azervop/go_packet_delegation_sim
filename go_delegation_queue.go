@@ -22,6 +22,9 @@ type simulationParameters struct {
 }
 
 func unwrapParamJson(params map[string]interface{}) []simulationParameters {
+	// Expand parameter JSON with arrays into a flat list of simulationParameters.
+	// Accepts a map where values may be scalars or arrays and returns the
+	// Cartesian product of parameters as a slice of simulationParameters.
 	paramList := []simulationParameters{}
 	// Helper function to recursively generate all combinations
 	var keys []string
@@ -103,6 +106,11 @@ type message struct {
 	departureTime float64
 }
 
+// messagePriorityQueue implements a min-heap ordered by priority then arrival time.
+// Lower `priority` value means higher precedence; ties broken by `arrivalTime`.
+// NOTE: priority is not currently being used in the simulation logic.
+type messagePriorityQueue []*message
+
 type messagePriorityQueue []*message
 
 // Implement heap.Interface for messagePriorityQueue
@@ -148,6 +156,9 @@ type pqueue struct {
 	averageState      float64
 }
 
+// pqueue is the manager queue that can delegate messages to a downstream VNF.
+// It uses a priority heap, tracks service state, and accumulates statistics.
+
 type queue struct {
 	messages       []message
 	busy           bool
@@ -162,6 +173,9 @@ type queue struct {
 	averageState   float64
 }
 
+// queue is a simple FIFO VNF queue implemented with a slice of messages.
+// It maintains timing and statistical counters used by the simulation loop.
+
 func logExperimentParameters(params []simulationParameters) {
 	f, err := os.Create(CSV_FOLDER + "params.csv")
 	if err != nil {
@@ -175,14 +189,19 @@ func logExperimentParameters(params []simulationParameters) {
 	fmt.Println("Experiment parameters logged to", CSV_FOLDER+"params.csv")
 }
 
+// logExperimentParameters writes experiment parameters to CSV for later analysis.
+
 func logEvent(id int, time float64, node string, event string, msgID int) {
 	if eventLogFile != nil {
 		fmt.Fprintf(eventLogFile, "%d,%.6f,%s,%s,%d\n", id, time, node, event, msgID)
 	}
 }
 
+// logEvent appends a single simulation event to the global event CSV file.
+
 func mgrQueueArrive(q *pqueue, msgID *int, t float64, nextQueue *queue, simID int) {
-	// handle arrival
+	// handle arrival into the manager queue. If idle, start service; otherwise
+	// push into the priority heap. Update averages and schedule next arrival.
 	newMsg := message{id: *msgID, arrivalTime: t, priority: 0}
 	// logEvent(simID, t, "manager", "arrival", *msgID)
 	(*msgID)++
@@ -206,8 +225,8 @@ func mgrQueueArrive(q *pqueue, msgID *int, t float64, nextQueue *queue, simID in
 }
 
 func mgrQueueProcess(q *pqueue, t float64, nextQueue *queue, simID int) {
-	// handle departure
-	// track statistics
+	// handle departure from the manager queue. Update statistics, decide whether
+	// to delegate or forward to the VNF, and start service for the next message.
 	q.processingMessage.departureTime = t
 	q.numProcessed++
 	q.totalDelay += q.processingMessage.departureTime - q.processingMessage.arrivalTime
@@ -245,10 +264,9 @@ func mgrQueueProcess(q *pqueue, t float64, nextQueue *queue, simID int) {
 }
 
 func queueArrive(q *queue, msgID *int, t float64, simID int) {
+	// Arrival into the VNF queue: log, enqueue, and possibly start service.
 	logEvent(simID, t, "vnf", "arrival", *msgID)
-	// handle arrival
 	newMsg := message{id: *msgID, arrivalTime: t}
-	// (*msgID)++
 	q.messages = append(q.messages, newMsg)
 	q.averageState += float64(len(q.messages)-1) * (t - q.lastChange)
 	if !q.busy {
@@ -258,12 +276,11 @@ func queueArrive(q *queue, msgID *int, t float64, simID int) {
 		q.nextDeparture = t + rand.ExpFloat64()/q.processingRate
 	}
 	q.lastChange = t
-	// q.nextArrival = t + rand.ExpFloat64()/q.arrivalRate
 }
 
 func queueProcess(q *queue, t float64, simID int) {
-	// handle departure
-	// track statistics
+	// Process departure from the VNF queue, update statistics, and schedule
+	// the next departure or set the queue idle.
 	q.messages[0].departureTime = t
 	q.numProcessed++
 	q.totalDelay += q.messages[0].departureTime - q.messages[0].arrivalTime
@@ -287,6 +304,9 @@ func queueProcess(q *queue, t float64, simID int) {
 }
 
 func runSimulation(params simulationParameters) {
+	// runSimulation executes a single simulation with the provided parameters.
+	// It advances the event loop until the target number of processed items
+	// (`params.N`) is reached and prints a summary on completion.
 	if params.keepProbability*params.arrivalRate >= params.departureRate {
 		panic(fmt.Sprintf("Unstable system: keepProbability (%.2f) * arrivalRate (%.2f) >= processingRate (%.2f)",
 			params.keepProbability, params.arrivalRate, params.departureRate))
