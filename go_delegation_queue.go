@@ -7,9 +7,10 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"path/filepath"
 )
 
-var CSV_FOLDER string = "csv/"
+var CSV_FOLDER string = "csv"
 var eventLogFile *os.File
 
 type simulationParameters struct {
@@ -111,8 +112,6 @@ type message struct {
 // NOTE: priority is not currently being used in the simulation logic.
 type messagePriorityQueue []*message
 
-type messagePriorityQueue []*message
-
 // Implement heap.Interface for messagePriorityQueue
 func (pq messagePriorityQueue) Len() int { return len(pq) }
 
@@ -177,7 +176,12 @@ type queue struct {
 // It maintains timing and statistical counters used by the simulation loop.
 
 func logExperimentParameters(params []simulationParameters) {
-	f, err := os.Create(CSV_FOLDER + "params.csv")
+	// Ensure the CSV folder exists before writing
+	err := os.MkdirAll(CSV_FOLDER, 0755)
+	if err != nil {
+		panic(err)
+	}
+	f, err := os.Create(filepath.Join(CSV_FOLDER, "params.csv"))
 	if err != nil {
 		panic(err)
 	}
@@ -186,7 +190,7 @@ func logExperimentParameters(params []simulationParameters) {
 	for i, p := range params {
 		fmt.Fprintf(f, "%d,%.2f,%.2f,%d,%d,%.2f\n", i, p.arrivalRate, p.departureRate, p.N, p.theta, p.keepProbability)
 	}
-	fmt.Println("Experiment parameters logged to", CSV_FOLDER+"params.csv")
+	fmt.Println("Experiment parameters logged to", filepath.Join(CSV_FOLDER, "params.csv"))
 }
 
 // logExperimentParameters writes experiment parameters to CSV for later analysis.
@@ -391,8 +395,17 @@ func main() {
 		return
 	}
 
-	CSV_FOLDER += fmt.Sprintf("k=%.01f", float64(paramMap["keepProbability"].(float64)))
-	CSV_FOLDER += fmt.Sprintf("_theta=%d/", int(paramMap["theta"].(float64)))
+	subFolder := fmt.Sprintf("k=%.01f_theta=%d",
+		float64(paramMap["keepProbability"].(float64)),
+		int(paramMap["theta"].(float64)))
+	CSV_FOLDER = filepath.Join(CSV_FOLDER, subFolder)
+
+	// Ensure the CSV folder exists before writing
+	err = os.MkdirAll(CSV_FOLDER, 0755)
+	if err != nil {
+		fmt.Println("Error creating CSV folder:", err)
+		return
+	}
 	paramList := unwrapParamJson(paramMap)
 	if len(paramList) == 0 {
 		fmt.Println("No valid parameters found in the file.")
@@ -404,7 +417,7 @@ func main() {
 
 	// Open event log file
 	var errLog error
-	eventLogFile, errLog = os.Create(CSV_FOLDER + "events.csv")
+	eventLogFile, errLog = os.Create(filepath.Join(CSV_FOLDER, "events.csv"))
 	if errLog != nil {
 		fmt.Println("Error creating event log file:", errLog)
 		return
@@ -419,5 +432,5 @@ func main() {
 		runSimulation(param)
 	}
 
-	fmt.Println("Event log saved to", CSV_FOLDER+"events.csv")
+	fmt.Println("Event log saved to", filepath.Join(CSV_FOLDER, "events.csv"))
 }
